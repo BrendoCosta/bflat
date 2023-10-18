@@ -37,8 +37,8 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <CompilerHost Condition="'$(CompilerHost)' == '' and '$(NETCoreSdkRuntimeIdentifier)' == 'win-x64'">windows-x64</CompilerHost>
-    <CompilerHost Condition="'$(CompilerHost)' == '' and '$(NETCoreSdkRuntimeIdentifier)' == 'linux-x64'">linux-glibc-x64</CompilerHost>
+    <CompilerHost Condition=" $([MSBuild]::IsOsPlatform('Windows')) AND '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64' ">windows-x64</CompilerHost>
+    <CompilerHost Condition=" $([MSBuild]::IsOsPlatform('Linux')) AND '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64' ">linux-glibc-x64</CompilerHost>
     <DownloadCachePath Condition="$(DownloadCachePath) == ''">$(BaseIntermediateOutputPath)</DownloadCachePath>
   </PropertyGroup>
 
