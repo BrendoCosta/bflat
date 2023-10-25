@@ -28,8 +28,19 @@ namespace System.Runtime
 
     internal sealed class RuntimeImportAttribute : Attribute
     {
-        public RuntimeImportAttribute(string lib) { }
-        public RuntimeImportAttribute(string lib, string entry) { }
+        public string DllName { get; }
+        public string EntryPoint { get; }
+
+        public RuntimeImportAttribute(string entry)
+        {
+            EntryPoint = entry;
+        }
+
+        public RuntimeImportAttribute(string dllName, string entry)
+        {
+            EntryPoint = entry;
+            DllName = dllName;
+        }
     }
 
     internal unsafe struct MethodTable
@@ -48,8 +59,77 @@ namespace Internal.Runtime.CompilerHelpers
 {
     class ThrowHelpers
     {
+        public enum ExceptionStringID
+        {
+            // TypeLoadException
+            ClassLoadGeneral,
+            ClassLoadExplicitGeneric,
+            ClassLoadBadFormat,
+            ClassLoadExplicitLayout,
+            ClassLoadValueClassTooLarge,
+            ClassLoadRankTooLarge,
+
+            ClassLoadInlineArrayFieldCount,
+            ClassLoadInlineArrayLength,
+            ClassLoadInlineArrayExplicit,
+
+            // MissingMethodException
+            MissingMethod,
+
+            // MissingFieldException
+            MissingField,
+
+            // FileNotFoundException
+            FileLoadErrorGeneric,
+
+            // InvalidProgramException
+            InvalidProgramDefault,
+            InvalidProgramSpecific,
+            InvalidProgramVararg,
+            InvalidProgramCallVirtFinalize,
+            InvalidProgramCallAbstractMethod,
+            InvalidProgramCallVirtStatic,
+            InvalidProgramNonStaticMethod,
+            InvalidProgramGenericMethod,
+            InvalidProgramNonBlittableTypes,
+            InvalidProgramMultipleCallConv,
+
+            // BadImageFormatException
+            BadImageFormatGeneric,
+            BadImageFormatSpecific,
+
+            // MarshalDirectiveException
+            MarshalDirectiveGeneric,
+
+            // AmbiguousMatchException
+            AmbiguousMatchUnsafeAccessor,
+        }
         static void ThrowIndexOutOfRangeException() => Environment.FailFast(null);
         static void ThrowDivideByZeroException() => Environment.FailFast(null);
+        static void ThrowInvalidProgramException() => Environment.FailFast(null);
+        static void ThrowBadImageFormatException(ExceptionStringID id) => Environment.FailFast(null);
+
+        static void ThrowTypeLoadException(ExceptionStringID id, string className, string typeName) => Environment.FailFast(null);
+
+        static void ThrowTypeLoadExceptionWithArgument(ExceptionStringID id, string className, string typeName, string messageArg) => Environment.FailFast(null);
+
+        static void ThrowMissingMethodException(ExceptionStringID id, string methodName) => Environment.FailFast(null);
+
+        static void ThrowMissingFieldException(ExceptionStringID id, string fieldName) => Environment.FailFast(null);
+
+        static void ThrowFileNotFoundException(ExceptionStringID id, string fileName) => Environment.FailFast(null);
+
+        static void ThrowInvalidProgramException(ExceptionStringID id) => Environment.FailFast(null);
+
+        static void ThrowInvalidProgramExceptionWithArgument(ExceptionStringID id, string methodName) => Environment.FailFast(null);
+
+        static void ThrowMarshalDirectiveException(ExceptionStringID id) => Environment.FailFast(null);
+
+        static void ThrowAmbiguousMatchException(ExceptionStringID id) => Environment.FailFast(null);
+
+        static void ThrowArgumentException() => Environment.FailFast(null);
+
+        static void ThrowArgumentOutOfRangeException() => Environment.FailFast(null);
     }
 
     // A class that the compiler looks for that has helpers to initialize the
@@ -137,6 +217,10 @@ assigningNull:
             [DllImport("kernel32")]
             static extern MethodTable** LocalAlloc(uint flags, uint size);
             MethodTable** result = LocalAlloc(0x40, size);
+#elif WINDOWSKERNEL
+            [DllImport("ntoskrnl.exe", EntryPoint = "ExAllocatePoolWithTag")]
+            static extern MethodTable** ExAllocatePoolWithTag(int poolType, uint size, ulong tag);
+            MethodTable** result = ExAllocatePoolWithTag(0, size, 202307061315);
 #elif LINUX
             [DllImport("libSystem.Native")]
             static extern MethodTable** SystemNative_Malloc(nuint size);

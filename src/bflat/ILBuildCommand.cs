@@ -151,6 +151,7 @@ internal class ILBuildCommand : CommandBase
             os switch
             {
                 TargetOS.Windows => "WINDOWS",
+                TargetOS.WindowsKernel => "WINDOWSKERNEL",
                 TargetOS.Linux => "LINUX",
                 TargetOS.UEFI => "UEFI",
             }

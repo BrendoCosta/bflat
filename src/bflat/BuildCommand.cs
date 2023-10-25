@@ -70,7 +70,7 @@ internal class BuildCommand : CommandBase
     };
     private static Option<string> TargetOSOption = new Option<string>("--os", "Target operating system")
     {
-        ArgumentHelpName = "linux|windows|uefi"
+        ArgumentHelpName = "linux|windows|windowskernel|uefi"
     };
     
     private static Option<string> TargetLibcOption = new Option<string>("--libc", "Target libc (Windows: shcrt|none, Linux: glibc|bionic)");
@@ -190,6 +190,7 @@ internal class BuildCommand : CommandBase
             targetOS = targetOSStr.ToLowerInvariant() switch
             {
                 "windows" => TargetOS.Windows,
+                "windowskernel" => TargetOS.WindowsKernel,
                 "linux" => TargetOS.Linux,
                 "uefi" => TargetOS.UEFI,
                 _ => throw new Exception($"Target OS '{targetOSStr}' is not supported"),
@@ -355,7 +356,7 @@ internal class BuildCommand : CommandBase
         var targetAbi = TargetAbi.NativeAot;
         var tsTargetOs = targetOS switch
         {
-            TargetOS.Windows or TargetOS.UEFI => Internal.TypeSystem.TargetOS.Windows,
+            TargetOS.Windows or TargetOS.WindowsKernel or TargetOS.UEFI => Internal.TypeSystem.TargetOS.Windows,
             TargetOS.Linux => Internal.TypeSystem.TargetOS.Linux,
         };
         var targetDetails = new TargetDetails(targetArchitecture, tsTargetOs, targetAbi, simdVectorLength);
@@ -385,6 +386,7 @@ internal class BuildCommand : CommandBase
             {
                 TargetOS.Linux => "linux",
                 TargetOS.Windows => "windows",
+                TargetOS.WindowsKernel => "windowskernel",
                 TargetOS.UEFI => "uefi",
                 _ => throw new Exception(targetOS.ToString()),
             };
@@ -504,6 +506,10 @@ internal class BuildCommand : CommandBase
             directPinvokes.Add("System.Globalization.Native");
             directPinvokes.Add("sokol");
             directPinvokes.Add("shell32!CommandLineToArgvW"); // zerolib uses this
+        }
+        else if (targetOS == TargetOS.WindowsKernel)
+        {
+            directPinvokes.Add("ntoskrnl.exe");
         }
         else if (targetOS == TargetOS.Linux)
         {
@@ -703,6 +709,10 @@ internal class BuildCommand : CommandBase
                 else
                     outputFilePath += ".dll";
             }
+            else if (targetOS == TargetOS.WindowsKernel)
+            {
+                outputFilePath += ".sys";
+            }
             else if (targetOS == TargetOS.UEFI)
             {
                 outputFilePath += ".efi";
@@ -724,7 +734,7 @@ internal class BuildCommand : CommandBase
             logger.LogMessage("Generating native code");
         string mapFileName = result.GetValueForOption(MapFileOption);
         ObjectDumper dumper = mapFileName != null ? new XmlObjectDumper(mapFileName) : null;
-        string objectFilePath = Path.ChangeExtension(outputFilePath, targetOS is TargetOS.Windows or TargetOS.UEFI ? ".obj" : ".o");
+        string objectFilePath = Path.ChangeExtension(outputFilePath, targetOS is TargetOS.Windows or TargetOS.WindowsKernel or TargetOS.UEFI ? ".obj" : ".o");
 
         PerfWatch compileWatch = new PerfWatch("Native compile");
         CompilationResults compilationResults = compilation.Compile(objectFilePath, dumper);
@@ -773,7 +783,7 @@ internal class BuildCommand : CommandBase
 
         var ldArgs = new StringBuilder();
 
-        if (targetOS is TargetOS.Windows or TargetOS.UEFI)
+        if (targetOS is TargetOS.Windows or TargetOS.WindowsKernel or TargetOS.UEFI)
         {
             ldArgs.Append("-flavor link \"");
             ldArgs.Append(objectFilePath);
@@ -789,6 +799,8 @@ internal class BuildCommand : CommandBase
 
             if (targetOS == TargetOS.UEFI)
                 ldArgs.Append("/subsystem:EFI_APPLICATION ");
+            else if (targetOS == TargetOS.WindowsKernel)
+                ldArgs.Append("/subsystem:native ");
             else if (buildTargetType == BuildTargetType.Exe)
                 ldArgs.Append("/subsystem:console ");
             else if (buildTargetType == BuildTargetType.WinExe)
@@ -797,6 +809,20 @@ internal class BuildCommand : CommandBase
             if (targetOS == TargetOS.UEFI)
             {
                 ldArgs.Append("/entry:EfiMain ");
+            }
+            else if (targetOS == TargetOS.WindowsKernel)
+            {
+                ldArgs.Append("/entry:DriverEntry ");
+                ldArgs.Append("/nologo ");
+                ldArgs.Append("/nxcompat ");
+                ldArgs.Append("/driver ");
+                ldArgs.Append("/dynamicbase ");
+                ldArgs.Append("/manifest:no ");
+                ldArgs.Append("/pdbaltpath:none ");
+                ldArgs.Append("/section:init,d ");
+                ldArgs.Append("/debug:full ");
+                ldArgs.Append("/integritycheck ");
+                
             }
             else if (buildTargetType is BuildTargetType.Exe or BuildTargetType.WinExe)
             {
@@ -841,6 +867,17 @@ internal class BuildCommand : CommandBase
                     ldArgs.Append("api-ms-win-crt-string-l1-1-0.lib api-ms-win-crt-time-l1-1-0.lib api-ms-win-crt-utility-l1-1-0.lib ");
                     ldArgs.Append("kernel32-supplements.lib ");
                 }
+            }
+            else if (targetOS == TargetOS.WindowsKernel)
+            {
+                ldArgs.Append("arbiter.lib ataport.lib aux_klib.lib battc.lib bdasup.lib bufferoverflowfastfailk.lib BufferOverflowGDI.lib ");
+                ldArgs.Append("cfg_support_v1.lib classpnp.lib clfs.lib cng.lib displib.lib drmk.lib fltMgr.lib fwpkclnt.lib ");
+                ldArgs.Append("hal.lib hidclass.lib hidparse.lib iointex.lib KNetPwrDepBroker.lib ksecdd.lib ksguid.lib ks.lib kusbfnclasslib.lib ");
+                ldArgs.Append("libcntpr.lib mcd.lib mpio.lib msgpioclxstub.lib mshwnclxstub.lib msnetioid.lib ndischimney.lib ndis.lib netio.lib no_cfg_support.lib ");
+                ldArgs.Append("ntoskrnl.lib ntstrsafe.lib offreg.lib oprghdlr.lib pciidex.lib portcls.lib procgrp.lib pshed.lib rdbsslib.lib rtlver.lib rxce.lib ");
+                ldArgs.Append("scsiport.lib scsiwmi.lib sdbus.lib sdport.lib sensorsclassextension.lib smclib.lib stdunk.lib storport.lib stream.lib tape.lib tbs.lib ");
+                ldArgs.Append("tcpip.lib tdi.lib treeclxstub.lib usbcamd2.lib usbdex.lib usbd.lib vhfkm.lib videoprt.lib wdmguid.lib ");
+                ldArgs.Append("wdm.lib wdmsec.lib win32k.lib winppi.lib winusb.lib wmilib.lib wmlkm.lib wpprecorder.lib wdfdriverentry.lib wdfldr.lib ");
             }
             ldArgs.Append("/opt:ref,icf /nodefaultlib:libcpmt.lib ");
         }
@@ -984,7 +1021,7 @@ internal class BuildCommand : CommandBase
             try { File.Delete(exportsFile); } catch { }
 
         if (exitCode == 0
-            && targetOS is not TargetOS.Windows and not TargetOS.UEFI
+            && targetOS is not TargetOS.Windows and not TargetOS.WindowsKernel and not TargetOS.UEFI
             && result.GetValueForOption(SeparateSymbolsOption))
         {
             if (logger.IsVerbose)
